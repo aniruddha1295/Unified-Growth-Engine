@@ -1,0 +1,243 @@
+{
+  "name": "FINAL_Master_Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Unified Growth Engine",
+        "formDescription": "Generate multi-platform marketing content and send personalized outreach.<br>Fill in your business details and target leads below.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Input Type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Text" },
+                  { "option": "URL" },
+                  { "option": "Image Description" }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Business Input",
+              "fieldType": "textarea",
+              "placeholder": "Describe your business OR paste a URL OR describe an image",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Lead 1 - Name",
+              "fieldType": "text",
+              "placeholder": "Rahul Sharma",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Lead 1 - Email",
+              "fieldType": "email",
+              "placeholder": "rahul@example.com",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Lead 1 - Company",
+              "fieldType": "text",
+              "placeholder": "Sharma & Associates",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Lead 2 - Name",
+              "fieldType": "text",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Lead 2 - Email",
+              "fieldType": "email",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Lead 2 - Company",
+              "fieldType": "text",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Lead 3 - Name",
+              "fieldType": "text",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Lead 3 - Email",
+              "fieldType": "email",
+              "placeholder": "Optional",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Lead 3 - Company",
+              "fieldType": "text",
+              "placeholder": "Optional",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Launch Growth Engine",
+          "formPath": "growth-engine-form"
+        }
+      },
+      "id": "master-form",
+      "name": "Growth Engine Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 300],
+      "webhookId": "growth-engine-form"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nlet type = 'text';\nconst inputType = (data['Input Type'] || 'Text').toLowerCase();\nif (inputType.includes('url')) type = 'url';\nelse if (inputType.includes('image')) type = 'image';\n\nconst content = data['Business Input'] || '';\n\nconst leads = [];\nif (data['Lead 1 - Name'] && data['Lead 1 - Email']) {\n  leads.push({ name: data['Lead 1 - Name'], email: data['Lead 1 - Email'], company: data['Lead 1 - Company'] || 'N/A' });\n}\nif (data['Lead 2 - Name'] && data['Lead 2 - Email']) {\n  leads.push({ name: data['Lead 2 - Name'], email: data['Lead 2 - Email'], company: data['Lead 2 - Company'] || 'N/A' });\n}\nif (data['Lead 3 - Name'] && data['Lead 3 - Email']) {\n  leads.push({ name: data['Lead 3 - Name'], email: data['Lead 3 - Email'], company: data['Lead 3 - Company'] || 'N/A' });\n}\n\nreturn [{ json: { type, content, leads } }];\n"
+      },
+      "id": "master-parse",
+      "name": "Parse Form Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.type }}", "rightValue": "text", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.type }}", "rightValue": "url", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "URL"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.type }}", "rightValue": "image", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "master-switch",
+      "name": "Switch Input Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nreturn [{ json: { normalized_content: input.content, leads: input.leads } }];\n"
+      },
+      "id": "master-text",
+      "name": "Normalize Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 140]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.content }}",
+        "options": {}
+      },
+      "id": "master-fetch",
+      "name": "Fetch URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = String($input.first().json.data || $input.first().json.body || $input.first().json);\nconst storedInput = $('Parse Form Data').first().json;\n\nlet text = html\n  .replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '')\n  .replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi, '')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .substring(0, 3000);\n\nreturn [{ json: { normalized_content: text, leads: storedInput.leads || [] } }];\n"
+      },
+      "id": "master-extract",
+      "name": "Extract Text from HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $input.first().json.content;\nconst leads = $input.first().json.leads || [];\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=PASTE_YOUR_GEMINI_API_KEY_HERE',\n  body: {\n    contents: [{ role: 'user', parts: [{ text: 'Describe what this image is about in detail. Focus on business, product, or service information. Image description: ' + content }] }],\n    generationConfig: { temperature: 0.3 }\n  },\n  json: true,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nlet raw = '';\ntry { raw = response.candidates[0].content.parts[0].text; } catch(e) { raw = 'Could not analyze image'; }\n\nreturn [{ json: { normalized_content: raw, leads: leads } }];\n"
+      },
+      "id": "master-vision",
+      "name": "Gemini Analyze Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $input.first().json.normalized_content || '';\nconst leads = $input.first().json.leads || [];\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=PASTE_YOUR_GEMINI_API_KEY_HERE',\n  body: {\n    contents: [{ role: 'user', parts: [{ text: 'You are a business analyst. Analyze the following input and return ONLY valid JSON with keys: value_proposition (string), icp (string), content_themes (string comma separated). No markdown, no backticks, no explanation. Just the JSON object. Input: ' + content }] }],\n    generationConfig: { temperature: 0.3 }\n  },\n  json: true,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nlet raw = '';\ntry { raw = response.candidates[0].content.parts[0].text; } catch(e) { return [{ json: { error: 'Gemini failed', leads } }]; }\n\nraw = raw.replace(/```json/g, '').replace(/```/g, '').trim();\n\ntry {\n  const parsed = JSON.parse(raw);\n  return [{ json: {\n    value_proposition: parsed.value_proposition || '',\n    icp: parsed.icp || '',\n    content_themes: parsed.content_themes || '',\n    normalized_content: content,\n    leads: leads\n  } }];\n} catch(e) {\n  return [{ json: {\n    value_proposition: raw,\n    icp: 'general business audience',\n    content_themes: 'business, growth, efficiency',\n    normalized_content: content,\n    leads: leads\n  } }];\n}\n"
+      },
+      "id": "master-analyzer",
+      "name": "Gemini Business Analyzer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://localhost:5678/webhook/content-workflow',\n  body: {\n    value_proposition: data.value_proposition,\n    icp: data.icp,\n    normalized_content: data.normalized_content,\n    content_themes: data.content_themes,\n    leads: data.leads\n  },\n  json: true,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nreturn [{ json: { status: 'content_workflow_triggered', response } }];\n"
+      },
+      "id": "master-trigger",
+      "name": "Trigger Content Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1460, 300]
+    }
+  ],
+  "connections": {
+    "Growth Engine Form": {
+      "main": [[{ "node": "Parse Form Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Form Data": {
+      "main": [[{ "node": "Switch Input Type", "type": "main", "index": 0 }]]
+    },
+    "Switch Input Type": {
+      "main": [
+        [{ "node": "Normalize Text", "type": "main", "index": 0 }],
+        [{ "node": "Fetch URL", "type": "main", "index": 0 }],
+        [{ "node": "Gemini Analyze Image", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize Text": {
+      "main": [[{ "node": "Gemini Business Analyzer", "type": "main", "index": 0 }]]
+    },
+    "Fetch URL": {
+      "main": [[{ "node": "Extract Text from HTML", "type": "main", "index": 0 }]]
+    },
+    "Extract Text from HTML": {
+      "main": [[{ "node": "Gemini Business Analyzer", "type": "main", "index": 0 }]]
+    },
+    "Gemini Analyze Image": {
+      "main": [[{ "node": "Gemini Business Analyzer", "type": "main", "index": 0 }]]
+    },
+    "Gemini Business Analyzer": {
+      "main": [[{ "node": "Trigger Content Workflow", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

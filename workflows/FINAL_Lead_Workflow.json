@@ -1,0 +1,187 @@
+{
+  "name": "FINAL_Lead_Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "lw-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "lead-workflow"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', message: 'Lead workflow started.' }) }}",
+        "options": {}
+      },
+      "id": "lw-respond",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [240, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst leads = body.leads || [];\nconst finalContent = body.final_content || {};\nconst emailDraft = finalContent.email || null;\n\nlet subject = 'Automate Your Tax Compliance';\nlet bodyTemplate = 'Hi {{name}},\\n\\nI noticed that {{company}} might benefit from automating tax compliance.\\n\\nWould you be open to a quick call?\\n\\nBest regards';\n\nif (emailDraft && emailDraft.subject) subject = emailDraft.subject;\nif (emailDraft && emailDraft.body) bodyTemplate = emailDraft.body;\n\nif (leads.length === 0) {\n  leads.push({ name: 'Test User', email: 'workbyanii@gmail.com', company: 'Test Company' });\n}\n\nconst emails = leads.map(lead => {\n  let pBody = bodyTemplate\n    .replace(/\\{\\{name\\}\\}/gi, lead.name)\n    .replace(/\\{\\{company\\}\\}/gi, lead.company)\n    .replace(/\\{\\{role\\}\\}/gi, lead.role || '');\n  let pSubject = subject\n    .replace(/\\{\\{name\\}\\}/gi, lead.name)\n    .replace(/\\{\\{company\\}\\}/gi, lead.company);\n\n  return { to: lead.email, name: lead.name, company: lead.company, subject: pSubject, body: pBody };\n});\n\nreturn emails.map(e => ({ json: e }));\n"
+      },
+      "id": "lw-personalize",
+      "name": "Personalize Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = $input.all();\nconst resumeUrl = $execution.resumeUrl;\n\nlet html = '<html><body style=\"font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;\">';\nhtml += '<h1 style=\"color:#1a73e8;\">Lead Outreach Preview</h1>';\nhtml += '<p>' + emails.length + ' personalized emails ready to send:</p>';\n\nemails.forEach((item, i) => {\n  const e = item.json;\n  html += '<div style=\"background:#f8f9fa;border-left:3px solid #34a853;padding:15px;margin:15px 0;border-radius:0 8px 8px 0;\">';\n  html += '<p><strong>To:</strong> ' + e.name + ' (' + e.to + ')</p>';\n  html += '<p><strong>Company:</strong> ' + e.company + '</p>';\n  html += '<p><strong>Subject:</strong> ' + e.subject + '</p>';\n  html += '<p style=\"white-space:pre-line;color:#5f6368;\">' + e.body + '</p></div>';\n});\n\nhtml += '<div style=\"text-align:center;padding:30px;\">';\nhtml += '<a href=\"' + resumeUrl + '?action=send\" style=\"display:inline-block;padding:14px 40px;margin:10px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;background:#34a853;color:white;\">SEND ALL EMAILS</a>';\nhtml += '<a href=\"' + resumeUrl + '?action=cancel\" style=\"display:inline-block;padding:14px 40px;margin:10px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;background:#ea4335;color:white;\">CANCEL</a>';\nhtml += '</div></body></html>';\n\nreturn [{ json: { email_html: html, emails: emails.map(e => e.json), total_leads: emails.length } }];\n"
+      },
+      "id": "lw-build-preview",
+      "name": "Build Lead Preview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "workbyanii@gmail.com",
+        "subject": "=Lead Outreach Preview — {{ $json.total_leads }} emails ready",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "id": "lw-send-preview",
+      "name": "Send Lead Preview",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [720, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {}
+      },
+      "id": "lw-wait",
+      "name": "Wait For Send Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "id": "c3", "leftValue": "={{ $json.query.action }}", "rightValue": "send", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "lw-if-send",
+      "name": "IF Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const previewData = $('Build Lead Preview').first().json;\nreturn (previewData.emails || []).map(e => ({ json: e }));\n"
+      },
+      "id": "lw-split",
+      "name": "Split Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 200]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "lw-send",
+      "name": "Send Gmail to Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1680, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={ \"status\": \"completed\", \"message\": \"All emails sent!\" }",
+        "options": {}
+      },
+      "id": "lw-done",
+      "name": "Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1920, 200]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={ \"status\": \"cancelled\" }",
+        "options": {}
+      },
+      "id": "lw-cancelled",
+      "name": "Cancelled",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1440, 440]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[
+        { "node": "Personalize Emails", "type": "main", "index": 0 },
+        { "node": "Webhook Response", "type": "main", "index": 0 }
+      ]]
+    },
+    "Personalize Emails": {
+      "main": [[{ "node": "Build Lead Preview", "type": "main", "index": 0 }]]
+    },
+    "Build Lead Preview": {
+      "main": [[{ "node": "Send Lead Preview", "type": "main", "index": 0 }]]
+    },
+    "Send Lead Preview": {
+      "main": [[{ "node": "Wait For Send Approval", "type": "main", "index": 0 }]]
+    },
+    "Wait For Send Approval": {
+      "main": [[{ "node": "IF Send", "type": "main", "index": 0 }]]
+    },
+    "IF Send": {
+      "main": [
+        [{ "node": "Split Emails", "type": "main", "index": 0 }],
+        [{ "node": "Cancelled", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split Emails": {
+      "main": [[{ "node": "Send Gmail to Lead", "type": "main", "index": 0 }]]
+    },
+    "Send Gmail to Lead": {
+      "main": [[{ "node": "Done", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

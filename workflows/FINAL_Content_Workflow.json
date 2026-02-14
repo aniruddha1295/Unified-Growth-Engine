@@ -1,0 +1,195 @@
+{
+  "name": "FINAL_Content_Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "content-workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cw-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "content-workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nreturn [{ json: {\n  value_proposition: body.value_proposition || '',\n  icp: body.icp || '',\n  normalized_content: body.normalized_content || '',\n  content_themes: body.content_themes || '',\n  leads: body.leads || []\n} }];\n"
+      },
+      "id": "cw-set-input",
+      "name": "Set Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', message: 'Content workflow started.' }) }}",
+        "options": {}
+      },
+      "id": "cw-respond",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [240, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst content = data.normalized_content || '';\nconst vp = data.value_proposition || '';\nconst icp = data.icp || '';\nconst themes = data.content_themes || '';\nconst leads = data.leads || [];\n\nconst prompt = `You are a senior marketing strategist. Based on the following business input, generate marketing content variations.\n\nBusiness Input: ${content}\nValue Proposition: ${vp}\nIdeal Customer: ${icp}\nContent Themes: ${themes}\n\nGenerate EXACT JSON with these keys and nothing else — no markdown, no backticks, no explanation:\n{\n  \"linkedin\": [\"post1\", \"post2\", \"post3\"],\n  \"x\": [\"tweet1\", \"tweet2\"],\n  \"instagram\": [{\"caption\": \"...\", \"hashtags\": [\"#tag1\"]}, {\"caption\": \"...\", \"hashtags\": [\"#tag1\"]}],\n  \"email\": [{\"subject\": \"...\", \"body\": \"...\"}, {\"subject\": \"...\", \"body\": \"...\"}],\n  \"image_prompts\": [\"prompt1\", \"prompt2\"]\n}\n\nConstraints:\n- LinkedIn posts: professional, 150-300 words, hook and CTA\n- X posts: under 280 chars, punchy, 2-3 hashtags\n- Instagram: engaging captions with 5-10 hashtags\n- Email: compelling subject lines, body with clear value prop and CTA. Include {{name}} and {{company}} placeholders so emails can be personalized.\n- Image prompts: detailed marketing image descriptions\n\nReturn ONLY the JSON.`;\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=PASTE_YOUR_GEMINI_API_KEY_HERE',\n  body: {\n    contents: [{ role: 'user', parts: [{ text: prompt }] }],\n    generationConfig: { temperature: 0.7 }\n  },\n  json: true,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nlet raw = '';\ntry { raw = response.candidates[0].content.parts[0].text; } catch(e) {\n  return [{ json: { error: 'Gemini failed', parse_status: 'failed', leads } }];\n}\n\nraw = raw.replace(/```json/g, '').replace(/```/g, '').trim();\n\ntry {\n  const parsed = JSON.parse(raw);\n  return [{ json: { ...parsed, leads, parse_status: 'success' } }];\n} catch(e) {\n  return [{ json: { error: 'JSON parse failed', raw_text: raw, leads, parse_status: 'failed' } }];\n}\n"
+      },
+      "id": "cw-gemini",
+      "name": "Gemini Generate Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "id": "c1", "leftValue": "={{ $json.parse_status }}", "rightValue": "success", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cw-if-parsed",
+      "name": "IF Parse OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst resumeUrl = $execution.resumeUrl;\nconst approveUrl = `${resumeUrl}?action=approve`;\nconst rejectUrl = `${resumeUrl}?action=reject`;\n\nlet html = `<html><head><style>\n  body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }\n  .section { background: white; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n  .section h2 { color: #1a73e8; margin-top: 0; border-bottom: 2px solid #e8f0fe; padding-bottom: 10px; }\n  .variation { background: #f8f9fa; border-left: 3px solid #1a73e8; padding: 12px 15px; margin: 10px 0; border-radius: 0 4px 4px 0; }\n  .variation-label { font-weight: bold; color: #5f6368; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }\n  .hashtags { color: #1a73e8; font-size: 13px; }\n  .email-subject { font-weight: bold; color: #202124; }\n  .email-body { color: #5f6368; white-space: pre-line; }\n  .btn { display: inline-block; padding: 14px 40px; margin: 10px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px; }\n  .btn-approve { background: #34a853; color: white; }\n  .btn-reject { background: #ea4335; color: white; }\n  .header { text-align: center; padding: 20px; }\n  .leads-info { background: #e8f5e9; border-radius: 8px; padding: 15px; margin: 15px 0; }\n</style></head><body>\n  <div class=\"header\"><h1>Content Preview — Unified Growth Engine</h1><p>Review and approve or reject.</p></div>`;\n\nif (data.leads && data.leads.length) {\n  html += '<div class=\"leads-info\"><strong>Target Leads (' + data.leads.length + '):</strong> ';\n  html += data.leads.map(l => l.name + ' (' + l.email + ')').join(', ');\n  html += '</div>';\n}\n\nif (data.linkedin && data.linkedin.length) {\n  html += '<div class=\"section\"><h2>LinkedIn (' + data.linkedin.length + ')</h2>';\n  data.linkedin.forEach((p, i) => { html += '<div class=\"variation\"><div class=\"variation-label\">Option ' + (i+1) + '</div>' + String(p).replace(/\\n/g, '<br>') + '</div>'; });\n  html += '</div>';\n}\n\nif (data.x && data.x.length) {\n  html += '<div class=\"section\"><h2>X / Twitter (' + data.x.length + ')</h2>';\n  data.x.forEach((t, i) => { html += '<div class=\"variation\"><div class=\"variation-label\">Option ' + (i+1) + '</div>' + t + '</div>'; });\n  html += '</div>';\n}\n\nif (data.instagram && data.instagram.length) {\n  html += '<div class=\"section\"><h2>Instagram (' + data.instagram.length + ')</h2>';\n  data.instagram.forEach((p, i) => {\n    const tags = Array.isArray(p.hashtags) ? p.hashtags.join(' ') : '';\n    html += '<div class=\"variation\"><div class=\"variation-label\">Option ' + (i+1) + '</div>' + (p.caption || p) + '<br><span class=\"hashtags\">' + tags + '</span></div>';\n  });\n  html += '</div>';\n}\n\nif (data.email && data.email.length) {\n  html += '<div class=\"section\"><h2>Email Drafts (' + data.email.length + ')</h2>';\n  data.email.forEach((e, i) => {\n    html += '<div class=\"variation\"><div class=\"variation-label\">Option ' + (i+1) + '</div><div class=\"email-subject\">Subject: ' + e.subject + '</div><div class=\"email-body\">' + e.body + '</div></div>';\n  });\n  html += '</div>';\n}\n\nif (data.image_prompts && data.image_prompts.length) {\n  html += '<div class=\"section\"><h2>Image Concepts</h2>';\n  data.image_prompts.forEach((p, i) => { html += '<div class=\"variation\"><div class=\"variation-label\">Concept ' + (i+1) + '</div>' + p + '</div>'; });\n  html += '</div>';\n}\n\nhtml += '<div style=\"text-align:center;padding:30px;\"><a href=\"' + approveUrl + '\" class=\"btn btn-approve\">APPROVE ALL</a><a href=\"' + rejectUrl + '\" class=\"btn btn-reject\">REJECT</a></div>';\nhtml += '<p style=\"text-align:center;color:#9aa0a6;font-size:12px;\">Approve to trigger Lead Outreach for ' + (data.leads ? data.leads.length : 0) + ' leads.</p></body></html>';\n\nreturn [{ json: { email_html: html, content_data: data } }];\n"
+      },
+      "id": "cw-build-email",
+      "name": "Build Preview Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "sendTo": "workbyanii@gmail.com",
+        "subject": "=Content Preview — Growth Engine",
+        "emailType": "html",
+        "message": "={{ $json.email_html }}",
+        "options": {}
+      },
+      "id": "cw-send-email",
+      "name": "Send Preview Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1240, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {}
+      },
+      "id": "cw-wait",
+      "name": "Wait For Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1480, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "id": "c2", "leftValue": "={{ $json.query.action }}", "rightValue": "approve", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cw-if-approved",
+      "name": "IF Approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1720, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const previewData = $('Build Preview Email').first().json;\nconst contentData = previewData.content_data;\nconst emailDraft = contentData.email && contentData.email.length > 0 ? contentData.email[0] : null;\nconst leads = contentData.leads || [];\n\nconst payload = {\n  final_content: {\n    linkedin: contentData.linkedin,\n    x: contentData.x,\n    instagram: contentData.instagram,\n    email: emailDraft,\n    image_prompts: contentData.image_prompts\n  },\n  leads: leads\n};\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://localhost:5678/webhook/lead-workflow',\n  body: payload,\n  json: true,\n  headers: { 'Content-Type': 'application/json' }\n});\n\nreturn [{ json: { status: 'lead_workflow_triggered', response } }];\n"
+      },
+      "id": "cw-trigger-lead",
+      "name": "Trigger Lead Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 100]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={ \"status\": \"rejected\", \"message\": \"Content rejected.\" }",
+        "options": {}
+      },
+      "id": "cw-rejected",
+      "name": "Rejected",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1960, 340]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Parse failed.",
+        "options": { "responseCode": 500 }
+      },
+      "id": "cw-error",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 440]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[
+        { "node": "Set Input Data", "type": "main", "index": 0 },
+        { "node": "Webhook Response", "type": "main", "index": 0 }
+      ]]
+    },
+    "Set Input Data": {
+      "main": [[{ "node": "Gemini Generate Content", "type": "main", "index": 0 }]]
+    },
+    "Gemini Generate Content": {
+      "main": [[{ "node": "IF Parse OK", "type": "main", "index": 0 }]]
+    },
+    "IF Parse OK": {
+      "main": [
+        [{ "node": "Build Preview Email", "type": "main", "index": 0 }],
+        [{ "node": "Error Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Preview Email": {
+      "main": [[{ "node": "Send Preview Email", "type": "main", "index": 0 }]]
+    },
+    "Send Preview Email": {
+      "main": [[{ "node": "Wait For Approval", "type": "main", "index": 0 }]]
+    },
+    "Wait For Approval": {
+      "main": [[{ "node": "IF Approved", "type": "main", "index": 0 }]]
+    },
+    "IF Approved": {
+      "main": [
+        [{ "node": "Trigger Lead Workflow", "type": "main", "index": 0 }],
+        [{ "node": "Rejected", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}
