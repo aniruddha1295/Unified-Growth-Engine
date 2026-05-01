@@ -301,14 +301,3 @@ Invoke-RestMethod -Uri "http://localhost:5678/webhook/content-workflow" -Method 
 
 ---
 
-## 👨‍💻 Author
-
-**Steven** — CTO, GECS Labs Limited
-
-Built as a demonstration of AI-powered marketing automation using no-code/low-code tools.
-
----
-
-## 📄 License
-
-MIT License — feel free to use, modify, and distribute.
